@@ -42,14 +42,17 @@ const normalizeAndSplitItems = (rawItem: string): string[] => {
   return parts
     .map(part => {
       let s = part.trim().toLowerCase();
-      // Remove generic articles if needed (optional, keeping simple for now)
       
+      // NEW: Remove articles (a, an, the) from the start to merge "A drill" with "Drill"
+      s = s.replace(/^(a|an|the)\s+/i, '');
+
       // Check synonyms
       if (SYNONYMS[s]) {
         return SYNONYMS[s];
       }
       
       // Capitalize first letter for display
+      if (s.length === 0) return '';
       return s.charAt(0).toUpperCase() + s.slice(1);
     })
     .filter(s => s.length > 0); // Remove empty strings

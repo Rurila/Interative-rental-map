@@ -198,12 +198,18 @@ const App: React.FC = () => {
       ? crypto.randomUUID() 
       : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // Add random jitter (approx 30-50m) to prevent exact marker overlap
+    // when users in the same PC6 (street segment) add items.
+    const JITTER_AMOUNT = 0.0006;
+    const jitterLat = (Math.random() - 0.5) * JITTER_AMOUNT;
+    const jitterLng = (Math.random() - 0.5) * JITTER_AMOUNT;
+
     const newRequest: RentalRequest = {
       id: newId,
       item: data.item,
       postcode: data.postcode,
-      lat: data.lat,
-      lng: data.lng,
+      lat: data.lat + jitterLat,
+      lng: data.lng + jitterLng,
       date: new Date().toISOString(),
       description: data.description,
       zoneId: pc4
