@@ -15,6 +15,11 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusStep, setStatusStep] = useState<'idle' | 'geocoding' | 'finalizing'>('idle');
 
+  // Helper to capitalize first letter of sentences/items
+  const formatItemInput = (val: string) => {
+    return val.charAt(0).toUpperCase() + val.slice(1);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -23,7 +28,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
     const missingFields = [];
     if (!item.trim()) missingFields.push("Item");
     if (!postcode.trim()) missingFields.push("Postcode");
-    if (!description.trim()) missingFields.push("Description");
+    // Description is now OPTIONAL
 
     if (missingFields.length > 0) {
       setError(`Required: ${missingFields.join(', ')}`);
@@ -32,8 +37,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
 
     const cleanPostcode = postcode.trim().toUpperCase();
     
-    // Regex for Dutch Postcode (1000-9999 AA-ZZ)
-    // Relaxed regex: allow user to type, strict check later
+    // Basic regex check, but allow some flexibility to avoid blocking valid inputs
     if (!/^[1-9][0-9]{3}\s?[A-Z]{2}$/.test(cleanPostcode)) {
       setError('Invalid Postcode format. Example: 1012 AB');
       return;
@@ -53,20 +57,19 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
         return;
       }
 
-      // 2. Verify it falls somewhat within our known Amsterdam data (roughly)
-      const zone = getZoneFromPostcode(cleanPostcode);
-      if (!zone) {
-        // We allow it, but warn user or just proceed.
-      }
-
       setStatusStep('finalizing');
+
+      // 2. Prepare Data
+      // Basic cleaning: Capitalize item, set default description if empty
+      const finalItem = formatItemInput(item.trim());
+      const finalDesc = description.trim() || "No details provided";
 
       // 3. Submit
       setTimeout(() => {
         onSubmit({ 
-          item: item.trim(), 
+          item: finalItem, 
           postcode: cleanPostcode, 
-          description: description.trim(), 
+          description: finalDesc, 
           lat: coords[0], 
           lng: coords[1] 
         });
@@ -103,7 +106,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
           )}
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">Postcode</label>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Postcode <span className="text-red-500">*</span></label>
             <div className="relative">
               <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
               <input
@@ -112,29 +115,27 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
                 value={postcode}
                 onChange={(e) => setPostcode(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50 focus:bg-white font-mono uppercase"
-                // Removed strict maxLength to prevent input frustration
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Full postcode places your dot precisely.</p>
+            <p className="text-xs text-gray-500 mt-1">Required for map placement.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">What do you need?</label>
+            <label className="block text-sm font-bold text-gray-700 mb-1">What do you need? <span className="text-red-500">*</span></label>
             <div className="relative">
               <Package className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="e.g. Drill, Ladder, Projector"
+                placeholder="e.g. Drill, Ladder (can list multiple)"
                 value={item}
                 onChange={(e) => setItem(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50 focus:bg-white"
               />
             </div>
-            <p className="text-xs text-gray-400 mt-1">Tip: You can list multiple items (e.g. "Drill, Saw")</p>
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-1">Details</label>
+            <label className="block text-sm font-bold text-gray-700 mb-1">Details <span className="text-gray-400 font-normal">(Optional)</span></label>
             <div className="relative">
               <FileText className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
               <textarea
