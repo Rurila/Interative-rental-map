@@ -22,6 +22,8 @@ This application is configured to be deployed easily to GitHub Pages.
 3. **Configuration:**
    - If deploying to `https://<user>.github.io/<repo>/`, no changes are needed.
    - The `vite.config.ts` has `base: './'` set to handle relative paths correctly.
+   - **IMPORTANT:** After running the deploy command, your live URL will be:
+     `https://<your-github-username>.github.io/<your-repo-name>/`
 
 ## 2. Updating Map Data (GeoJSON)
 
@@ -59,3 +61,38 @@ The app uses `xlsx` (SheetJS) to generate Excel files client-side.
 - Trigger: "Export Data" button in `App.tsx`.
 
 No backend server is required for this feature.
+
+## 5. Embedding in Wix (Wix Integration)
+
+To display this app inside your Wix website, use the **Embed HTML** feature.
+
+1. **Deploy your app** first (See Section 1) and copy your GitHub Pages URL.
+2. In the Wix Editor:
+   - Click **Add Elements (+)** on the left sidebar.
+   - Go to **Embed Code** > **Embed HTML**.
+   - Click **Enter Code**.
+3. Paste the following code block. **Replace `YOUR_GITHUB_PAGES_URL` with your actual link.**
+
+```html
+<!-- Wix Embed Code -->
+<iframe 
+  src="YOUR_GITHUB_PAGES_URL" 
+  width="100%" 
+  height="100%" 
+  frameborder="0" 
+  allow="geolocation; clipboard-write" 
+  title="Amsterdam Rental Map"
+  style="border: none; width: 100%; height: 100vh; min-height: 600px;"
+></iframe>
+```
+
+### Why use this code instead of just the link?
+- **Height:** It forces the map to use the full height of the container.
+- **Permissions:** The `allow="geolocation"` attribute ensures the user (if you add location features later) can share their location, and `clipboard-write` ensures copy-paste functions work.
+- **Clean Border:** Removes the default iframe border.
+
+### Troubleshooting Wix Mobile
+If the map feels "cramped" on mobile in Wix:
+1. Click the Mobile icon in Wix to switch to Mobile Editor.
+2. Resize the HTML Embed element to be taller (drag the handle down).
+3. Ensure the element is not set to "Hidden on Mobile".
