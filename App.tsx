@@ -30,19 +30,34 @@ const App: React.FC = () => {
   const [useCloud, setUseCloud] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'live' | 'offline' | 'local'>('local');
 
-  // Helper: Get jittered coordinates based on PC4
+  // Helper: Get jittered coordinates based on PC4 ranges
+  // This ensures points fall into their correct district even if we don't have a specific polygon for them
   const getSmartCoords = (pc4: string) => {
+    // 1. Try exact match in our highlighted zones first
     const zone = PC4_ZONES.find(z => z.id === pc4);
-    // If zone found, use its center. If not, fallback to City center.
-    const center = zone ? zone.center : AMSTERDAM_CENTER;
-    
-    // Add randomness (approx 500m radius) so dots don't stack
-    const jitterLat = (Math.random() - 0.5) * 0.006;
-    const jitterLng = (Math.random() - 0.5) * 0.006;
+    if (zone) {
+      return {
+        lat: zone.center[0] + (Math.random() - 0.5) * 0.006,
+        lng: zone.center[1] + (Math.random() - 0.5) * 0.006
+      };
+    }
+
+    // 2. Fallback: Map broader PC4 ranges to district centers
+    const p = parseInt(pc4);
+    let center = AMSTERDAM_CENTER; // Default fallback
+
+    if (p >= 1011 && p <= 1018) center = [52.373, 4.893];      // Centrum
+    else if (p >= 1020 && p <= 1039) center = [52.395, 4.910]; // Noord
+    else if (p >= 1040 && p <= 1049) center = [52.390, 4.840]; // Westpoort
+    else if (p >= 1050 && p <= 1059) center = [52.365, 4.860]; // West
+    else if (p >= 1060 && p <= 1069) center = [52.360, 4.830]; // Nieuw-West
+    else if (p >= 1070 && p <= 1083) center = [52.345, 4.870]; // Zuid
+    else if (p >= 1086 && p <= 1099) center = [52.355, 4.925]; // Oost
+    else if (p >= 1100 && p <= 1109) center = [52.300, 4.950]; // Zuidoost
     
     return {
-      lat: center[0] + jitterLat,
-      lng: center[1] + jitterLng
+      lat: center[0] + (Math.random() - 0.5) * 0.015, // Larger jitter for broader districts
+      lng: center[1] + (Math.random() - 0.5) * 0.015
     };
   };
 
@@ -178,8 +193,13 @@ const App: React.FC = () => {
   const handleAddRequest = async (data: { item: string; postcode: string; description: string; lat: number; lng: number }) => {
     const pc4 = data.postcode.substring(0, 4);
     
+    // Use a robust ID generation to avoid collisions
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const newRequest: RentalRequest = {
-      id: Date.now().toString(),
+      id: newId,
       item: data.item,
       postcode: data.postcode,
       lat: data.lat,
@@ -189,44 +209,44 @@ const App: React.FC = () => {
       zoneId: pc4
     };
 
+    // 1. Optimistic Update: Add locally IMMEDIATELY
+    setRequests(prev => [...prev, newRequest]);
+
     if (useCloud && supabase) {
+      // 2. Send to Cloud
       const { error } = await supabase
         .from('requests')
         .insert([newRequest]);
       
       if (error) {
-        alert("Error saving to cloud: " + error.message);
-        // Even if cloud fails, we might want to show it locally? 
-        // For now, let's assume if it fails we don't show it.
-      } else {
-        // SUCCESS! Optimistic Update:
-        // We update the local state IMMEDIATELY so the user sees the dot instantly.
-        // The realtime subscription (in useEffect) has a check to prevent duplicates.
-        setRequests(prev => {
-           if (prev.some(r => r.id === newRequest.id)) return prev;
-           return [...prev, newRequest];
-        });
-      }
-    } else {
-      // Local Mode
-      setRequests(prev => [...prev, newRequest]);
+        console.error("Supabase saving error:", error);
+        alert("Error saving to cloud. Changes reverted.");
+        // Rollback if failed
+        setRequests(prev => prev.filter(r => r.id !== newId));
+      } 
+      // If success, the Realtime subscription handles the event, 
+      // and our 'prev.some(id)' check prevents duplicates.
     }
   };
 
-  // Kept for internal use or advanced debug, but removed from main UI button
+  // Kept for internal use or advanced debug
   const handleGenerateData = async () => {
     setIsGenerating(true);
     const mockItems = await generateMockData(5);
     
     const newRequests: RentalRequest[] = mockItems.map((item, idx) => {
       const pc4 = item.postcode.substring(0, 4);
-      const coords = getSmartCoords(pc4); // Use smart coords logic
+      const coords = getSmartCoords(pc4); // Now uses smart range logic
       
       const date = new Date();
       date.setDate(date.getDate() - Math.floor(Math.random() * 30));
+      
+      const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : `gen-${Date.now()}-${idx}`;
 
       return {
-        id: `gen-${Date.now()}-${idx}`,
+        id: newId,
         item: item.item,
         postcode: item.postcode,
         lat: coords.lat,
@@ -239,7 +259,6 @@ const App: React.FC = () => {
 
     if (useCloud && supabase) {
       await supabase.from('requests').insert(newRequests);
-      // We rely on realtime sub for bulk generates to avoid complex local state merging here
     } else {
       setRequests(prev => [...prev, ...newRequests]);
     }
@@ -303,7 +322,7 @@ const App: React.FC = () => {
             Export
           </button>
 
-          {/* UPDATED BUTTON: "Amsterdam" shows overall stats */}
+          {/* "Amsterdam" shows overall stats */}
           <button
             onClick={() => handleZoneSelect(AMSTERDAM_GLOBAL_ZONE)}
             className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 rounded-full transition shadow-sm uppercase tracking-wide"
