@@ -1,40 +1,36 @@
 import { createClient } from '@supabase/supabase-js';
 
-let supabaseUrl = '';
-let supabaseAnonKey = '';
+// Default credentials provided by user
+const DEFAULT_URL = 'https://cjwiefdhbebpdwiylxmz.supabase.co';
+const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqd2llZmRoYmVicGR3aXlseG16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjEzMzksImV4cCI6MjA3OTM5NzMzOX0.FagvXivj2hET8Mo7yXMJNJFfxwfMv4Eu7q_oH1WRvsY';
 
-// 1. Safely try import.meta.env (Vite standard)
+let supabaseUrl = DEFAULT_URL;
+let supabaseAnonKey = DEFAULT_KEY;
+
+// Attempt to override from environment variables if they exist (optional)
 try {
   // @ts-ignore
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     // @ts-ignore
-    supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    if (import.meta.env.VITE_SUPABASE_URL) supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     // @ts-ignore
-    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    if (import.meta.env.VITE_SUPABASE_ANON_KEY) supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   }
 } catch (e) {
-  console.warn('import.meta.env access failed', e);
+  // Ignore env loading errors
 }
 
-// 2. Fallback to process.env (Node/Vite define plugin)
-// This handles cases where import.meta.env is missing or we are in a different build context
-if (!supabaseUrl) {
-  try {
-    // Check if process exists to avoid ReferenceError
-    if (typeof process !== 'undefined' && process.env) {
-      supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-      supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
-    }
-  } catch (e) {
-    console.warn('process.env access failed', e);
+try {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.VITE_SUPABASE_URL) supabaseUrl = process.env.VITE_SUPABASE_URL;
+    if (process.env.VITE_SUPABASE_ANON_KEY) supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
   }
+} catch (e) {
+  // Ignore process env errors
 }
 
-// Only export the client if keys exist, otherwise export null.
-// This allows the App to fallback to LocalStorage if not configured.
-export const supabase = (supabaseUrl && supabaseAnonKey) 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : null;
+// Create client with the determined credentials
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Helper to check connectivity
 export const isSupabaseConfigured = () => {
