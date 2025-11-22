@@ -13,9 +13,21 @@ interface MapBoardProps {
 
 const MapController = () => {
   const map = useMap();
+  
   useEffect(() => {
+    // Initial resize check
     map.invalidateSize();
+
+    // Fix for "Half Map" / Grey tiles issue:
+    // Sometimes the container hasn't fully sized when Leaflet initializes.
+    // We force a resize check after a short delay.
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [map]);
+
   return null;
 };
 
@@ -26,8 +38,8 @@ const MapBoard: React.FC<MapBoardProps> = ({ requests, onZoneSelect }) => {
 
   useEffect(() => {
     // Attempt to fetch the official Amsterdam GeoJSON
-    // User must place 'amsterdam_pc4.geojson' in the public/ folder
-    fetch('./amsterdam_pc4.geojson')
+    // Use absolute path '/amsterdam_pc4.geojson' which resolves to the public directory in Vite/Vercel
+    fetch('/amsterdam_pc4.geojson')
       .then(response => {
         if (!response.ok) throw new Error("GeoJSON not found");
         return response.json();
@@ -115,7 +127,7 @@ const MapBoard: React.FC<MapBoardProps> = ({ requests, onZoneSelect }) => {
         <div className="absolute top-4 left-16 right-16 z-[400] flex justify-center pointer-events-none">
            <div className="bg-yellow-50/90 backdrop-blur text-yellow-800 text-xs px-3 py-1 rounded-full shadow-sm border border-yellow-200 flex items-center gap-2 pointer-events-auto">
               <AlertCircle className="w-3 h-3" />
-              <span>Demo Mode: Showing 5 sample zones. Add 'amsterdam_pc4.geojson' for full map.</span>
+              <span>Demo Mode: Showing 5 sample zones. Add 'public/amsterdam_pc4.geojson' for full map.</span>
            </div>
         </div>
       )}
