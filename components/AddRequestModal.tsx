@@ -19,17 +19,23 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
     e.preventDefault();
     setError('');
     
-    // Basic validation
-    if (!item.trim() || !postcode.trim() || !description.trim()) {
-      setError('All fields are required.');
+    // Explicit Validation
+    const missingFields = [];
+    if (!item.trim()) missingFields.push("Item");
+    if (!postcode.trim()) missingFields.push("Postcode");
+    if (!description.trim()) missingFields.push("Description");
+
+    if (missingFields.length > 0) {
+      setError(`Required: ${missingFields.join(', ')}`);
       return;
     }
 
     const cleanPostcode = postcode.trim().toUpperCase();
     
     // Regex for Dutch Postcode (1000-9999 AA-ZZ)
+    // Relaxed regex: allow user to type, strict check later
     if (!/^[1-9][0-9]{3}\s?[A-Z]{2}$/.test(cleanPostcode)) {
-      setError('Please enter a full Dutch postcode (e.g. 1012 AB).');
+      setError('Invalid Postcode format. Example: 1012 AB');
       return;
     }
 
@@ -41,7 +47,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
       const coords = await geocodePostcode(cleanPostcode);
       
       if (!coords) {
-        setError('Could not find this location in Amsterdam. Please check the postcode.');
+        setError('Location not found in Amsterdam. Try a valid postcode.');
         setIsSubmitting(false);
         setStatusStep('idle');
         return;
@@ -50,7 +56,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
       // 2. Verify it falls somewhat within our known Amsterdam data (roughly)
       const zone = getZoneFromPostcode(cleanPostcode);
       if (!zone) {
-        // We allow it, but warn user or just proceed. For this demo, we proceed but maybe it won't have a colored zone under it.
+        // We allow it, but warn user or just proceed.
       }
 
       setStatusStep('finalizing');
@@ -58,9 +64,9 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
       // 3. Submit
       setTimeout(() => {
         onSubmit({ 
-          item, 
+          item: item.trim(), 
           postcode: cleanPostcode, 
-          description, 
+          description: description.trim(), 
           lat: coords[0], 
           lng: coords[1] 
         });
@@ -80,15 +86,19 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
           <h2 className="text-xl font-bold text-gray-800">New Rental Request</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition">
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="p-2 hover:bg-gray-200 rounded-full transition"
+          >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100">
-              {error}
+            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 flex items-center gap-2">
+              <span className="font-bold">Error:</span> {error}
             </div>
           )}
 
@@ -102,10 +112,10 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
                 value={postcode}
                 onChange={(e) => setPostcode(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50 focus:bg-white font-mono uppercase"
-                maxLength={7}
+                // Removed strict maxLength to prevent input frustration
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Enter full postcode for precise map placement.</p>
+            <p className="text-xs text-gray-500 mt-1">Full postcode places your dot precisely.</p>
           </div>
 
           <div>
@@ -120,6 +130,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50 focus:bg-white"
               />
             </div>
+            <p className="text-xs text-gray-400 mt-1">Tip: You can list multiple items (e.g. "Drill, Saw")</p>
           </div>
 
           <div>
@@ -144,7 +155,7 @@ const AddRequestModal: React.FC<AddRequestModalProps> = ({ onClose, onSubmit }) 
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  {statusStep === 'geocoding' ? 'Locating Address...' : 'Posting...'}
+                  {statusStep === 'geocoding' ? 'Locating...' : 'Posting...'}
                 </>
               ) : (
                 <>

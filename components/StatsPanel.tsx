@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PostcodeZone, RentalRequest, ItemStat } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { X, Wand2, Loader2, MapPin, Globe } from 'lucide-react';
@@ -10,33 +10,49 @@ interface StatsPanelProps {
   onClose: () => void;
 }
 
-// Simple dictionary for data cleaning
-// Maps common variations to a standard term
-const ITEM_SYNONYMS: Record<string, string> = {
+// Basic Synonym Dictionary for Data Cleaning
+const SYNONYMS: Record<string, string> = {
   'spanner': 'Wrench',
-  'moersleutel': 'Wrench', // Dutch
-  'adjustable spanner': 'Wrench',
   'wrench': 'Wrench',
-  'drill': 'Power Drill',
-  'boormachine': 'Power Drill', // Dutch
-  'hammer drill': 'Power Drill',
+  'adjustable spanner': 'Wrench',
+  'moersleutel': 'Wrench',
   'bike': 'Bicycle',
-  'fiets': 'Bicycle', // Dutch
-  'city bike': 'Bicycle',
+  'bicycle': 'Bicycle',
+  'fiets': 'Bicycle',
   'cargo bike': 'Cargo Bike',
   'bakfiets': 'Cargo Bike',
-  'party tent': 'Party Tent',
-  'partytent': 'Party Tent',
-  'bbq': 'Barbecue',
-  'grill': 'Barbecue',
+  'drill': 'Power Drill',
+  'power drill': 'Power Drill',
+  'hammer drill': 'Power Drill',
+  'boormachine': 'Power Drill',
   'ladder': 'Ladder',
-  'trap': 'Ladder', // Dutch
-  'projector': 'Beamer',
-  'beamer': 'Beamer'
+  'step ladder': 'Ladder',
+  'trap': 'Ladder',
+  'bbq': 'Barbecue',
+  'barbecue': 'Barbecue',
+  'grill': 'Barbecue'
 };
 
-const toTitleCase = (str: string) => {
-  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+const normalizeAndSplitItems = (rawItem: string): string[] => {
+  // 1. Split by common separators: comma, ampersand, plus, or ' and '
+  // e.g. "Locker, bolt cutter" -> ["Locker", "bolt cutter"]
+  const parts = rawItem.split(/[,&+]|\s+and\s+/i);
+
+  // 2. Clean and Normalize each part
+  return parts
+    .map(part => {
+      let s = part.trim().toLowerCase();
+      // Remove generic articles if needed (optional, keeping simple for now)
+      
+      // Check synonyms
+      if (SYNONYMS[s]) {
+        return SYNONYMS[s];
+      }
+      
+      // Capitalize first letter for display
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    })
+    .filter(s => s.length > 0); // Remove empty strings
 };
 
 const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
@@ -46,58 +62,44 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
 
   const isGlobal = zone.id === 'ALL';
 
-  // Filter requests based on zone and time
-  const filteredRequests = requests.filter(req => {
-    // If Global mode, don't filter by zoneId. Otherwise, match zoneId.
-    if (!isGlobal && req.zoneId !== zone.id) return false;
-    
-    const reqDate = new Date(req.date);
-    const now = new Date();
-    
-    if (timeFilter === 'today') {
-      return reqDate.toDateString() === now.toDateString();
-    }
-    if (timeFilter === 'week') {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return reqDate >= weekAgo;
-    }
-    return true;
-  });
-
-  // Aggregate item counts with Splitting and Cleaning logic
-  const itemCounts = filteredRequests.reduce((acc, curr) => {
-    // 1. Split by common separators: comma, ampersand, plus, or the word "and"
-    // e.g. "Locker, bolt cutter" -> ["Locker", " bolt cutter"]
-    const parts = curr.item.split(/[,+&]|\s+and\s+/i);
-
-    parts.forEach((part) => {
-      // 2. Basic cleaning: trim whitespace and convert to lowercase for comparison
-      let cleanName = part.trim().toLowerCase();
+  // Memoize the data processing to avoid recalculating on every render unless deps change
+  const data = useMemo(() => {
+    // 1. Filter requests based on zone and time
+    const filteredRequests = requests.filter(req => {
+      // If Global mode, don't filter by zoneId. Otherwise, match zoneId.
+      if (!isGlobal && req.zoneId !== zone.id) return false;
       
-      // Remove trailing punctuation (like periods)
-      cleanName = cleanName.replace(/[.]+$/, '');
-
-      if (!cleanName) return;
-
-      // 3. Synonym mapping / Normalization
-      // If it exists in our map, use the standard name, otherwise title case the user input
-      let displayName = ITEM_SYNONYMS[cleanName];
+      const reqDate = new Date(req.date);
+      const now = new Date();
       
-      if (!displayName) {
-        // Fallback: just title case what they wrote if it's not in our dictionary
-        displayName = toTitleCase(cleanName);
+      if (timeFilter === 'today') {
+        return reqDate.toDateString() === now.toDateString();
       }
-
-      acc[displayName] = (acc[displayName] || 0) + 1;
+      if (timeFilter === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return reqDate >= weekAgo;
+      }
+      return true;
     });
 
-    return acc;
-  }, {} as Record<string, number>);
+    // 2. Aggregate item counts with Cleaning Logic
+    const itemCounts = filteredRequests.reduce((acc, curr) => {
+      // Split "Locker, bolt cutter" into multiple items
+      const cleanedItems = normalizeAndSplitItems(curr.item);
+      
+      cleanedItems.forEach(item => {
+        acc[item] = (acc[item] || 0) + 1;
+      });
+      
+      return acc;
+    }, {} as Record<string, number>);
 
-  const data: ItemStat[] = Object.entries(itemCounts)
-    .map(([name, count]) => ({ name, count: count as number }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    // 3. Convert to array and sort
+    return Object.entries(itemCounts)
+      .map(([name, count]) => ({ name, count: count as number }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [requests, zone.id, isGlobal, timeFilter]);
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -122,7 +124,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900">{zone.districtName}</h2>
           <p className="text-sm text-gray-500 mt-1">
-            {filteredRequests.length} active request{filteredRequests.length !== 1 ? 's' : ''} {isGlobal ? 'in Amsterdam' : 'in this area'}
+             Analyzing {isGlobal ? 'city-wide' : 'local'} demand
           </p>
         </div>
         <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition">
@@ -181,7 +183,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
             </div>
 
             <div className="space-y-4">
-               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Most Wanted Items</h3>
+               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Most Wanted Items (Top 10)</h3>
                <ul className="space-y-2">
                  {data.map((item, idx) => (
                    <li key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition">
