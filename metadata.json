@@ -1,0 +1,5 @@
+{
+  "name": "Amsterdam Rental Map",
+  "description": "Interactive map of Amsterdam for neighborhood item sharing and analysis.",
+  "requestFramePermissions": []
+}
