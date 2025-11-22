@@ -10,10 +10,7 @@ export default defineConfig({
     outDir: 'dist',
   },
   define: {
-    // 解决 "Uncaught ReferenceError: process is not defined" 报错
-    // 同时将 Vercel 环境变量注入到前端代码中
-    'process.env': {
-      API_KEY: process.env.API_KEY
-    }
+    // 安全地注入 API_KEY，避免覆盖整个 process.env 导致 React 崩溃
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY || '')
   }
 });

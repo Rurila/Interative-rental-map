@@ -18,7 +18,7 @@
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
     "recharts": "^2.12.2",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.1/xlsx-0.20.1.tgz"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.8",
