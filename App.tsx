@@ -3,13 +3,21 @@ import MapBoard from './components/MapBoard';
 import StatsPanel from './components/StatsPanel';
 import AddRequestModal from './components/AddRequestModal';
 import { RentalRequest, PostcodeZone } from './types';
-import { PC4_ZONES } from './constants';
+import { PC4_ZONES, AMSTERDAM_CENTER } from './constants';
 import { generateMockData } from './services/geminiService';
 import { exportRequestsToExcel } from './services/excelService';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
-import { Plus, Map as MapIcon, Sparkles, Loader2, Download, Trash2, Cloud, CloudOff, Wifi } from 'lucide-react';
+import { Plus, Map as MapIcon, Loader2, Download, Trash2, Cloud, CloudOff, Wifi, LayoutDashboard } from 'lucide-react';
 
 const STORAGE_KEY = 'amsterdam_rental_requests';
+
+const AMSTERDAM_GLOBAL_ZONE: PostcodeZone = {
+  id: 'ALL',
+  districtName: 'City of Amsterdam',
+  color: '#E4002B', // Amsterdam Red
+  center: AMSTERDAM_CENTER,
+  polygon: []
+};
 
 const App: React.FC = () => {
   const [requests, setRequests] = useState<RentalRequest[]>([]);
@@ -21,6 +29,22 @@ const App: React.FC = () => {
   // Cloud Status
   const [useCloud, setUseCloud] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'live' | 'offline' | 'local'>('local');
+
+  // Helper: Get jittered coordinates based on PC4
+  const getSmartCoords = (pc4: string) => {
+    const zone = PC4_ZONES.find(z => z.id === pc4);
+    // If zone found, use its center. If not, fallback to City center.
+    const center = zone ? zone.center : AMSTERDAM_CENTER;
+    
+    // Add randomness (approx 500m radius) so dots don't stack
+    const jitterLat = (Math.random() - 0.5) * 0.006;
+    const jitterLng = (Math.random() - 0.5) * 0.006;
+    
+    return {
+      lat: center[0] + jitterLat,
+      lng: center[1] + jitterLng
+    };
+  };
 
   // 1. Initialization Effect
   useEffect(() => {
@@ -47,7 +71,11 @@ const App: React.FC = () => {
             .channel('public:requests')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requests' }, (payload) => {
               const newReq = payload.new as RentalRequest;
-              setRequests(prev => [...prev, newReq]);
+              // Prevent duplicates: Check if ID already exists (e.g. if we added it optimistically)
+              setRequests(prev => {
+                if (prev.some(req => req.id === newReq.id)) return prev;
+                return [...prev, newReq];
+              });
             })
             .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'requests' }, (payload) => {
               setRequests(prev => prev.filter(req => req.id !== payload.old.id));
@@ -72,7 +100,6 @@ const App: React.FC = () => {
   }, []);
 
   // 2. Local Storage Fallback Sync
-  // Only runs if NOT using cloud
   useEffect(() => {
     if (isLoaded && !useCloud) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
@@ -95,18 +122,29 @@ const App: React.FC = () => {
   };
 
   const loadDemoData = () => {
-    const initialData: RentalRequest[] = [
-      {
-        id: '1',
-        item: 'Hammer Drill',
-        postcode: '1012 JS',
-        lat: 52.3710,
-        lng: 4.8940,
-        date: new Date().toISOString(),
-        description: 'Need for weekend renovation',
-        zoneId: '1012'
-      }
+    // Create specific demo data that maps correctly to our defined zones
+    const demoItems = [
+      { item: 'Hammer Drill', pc: '1012', desc: 'Renovation work' },
+      { item: 'Cargo Bike', pc: '1054', desc: 'Moving boxes' },
+      { item: 'Party Tent', pc: '1071', desc: 'Garden party' },
+      { item: 'Ladder', pc: '1091', desc: 'Painting ceiling' },
+      { item: 'Sound System', pc: '1031', desc: 'Event' }
     ];
+
+    const initialData: RentalRequest[] = demoItems.map((d, i) => {
+      const coords = getSmartCoords(d.pc);
+      return {
+        id: `demo-${i}`,
+        item: d.item,
+        postcode: `${d.pc} XX`,
+        lat: coords.lat,
+        lng: coords.lng,
+        date: new Date().toISOString(),
+        description: d.desc,
+        zoneId: d.pc
+      };
+    });
+    
     setRequests(initialData);
   };
 
@@ -116,20 +154,17 @@ const App: React.FC = () => {
     }
 
     if (useCloud && supabase) {
-      // Delete from Cloud
       const { error } = await supabase
         .from('requests')
         .delete()
-        .neq('id', '0'); // Delete all rows where id is not 0 (basically all)
+        .neq('id', '0'); 
       
       if (error) {
         alert('Failed to clear cloud data');
-        console.error(error);
       } else {
-        setRequests([]); // Optimistic update
+        setRequests([]); 
       }
     } else {
-      // Delete Local
       localStorage.removeItem(STORAGE_KEY);
       loadDemoData();
       window.location.reload();
@@ -144,7 +179,7 @@ const App: React.FC = () => {
     const pc4 = data.postcode.substring(0, 4);
     
     const newRequest: RentalRequest = {
-      id: Date.now().toString(), // Temporarily use timestamp, DB might auto-generate UUID but string is fine
+      id: Date.now().toString(),
       item: data.item,
       postcode: data.postcode,
       lat: data.lat,
@@ -155,33 +190,38 @@ const App: React.FC = () => {
     };
 
     if (useCloud && supabase) {
-      // Insert to Cloud
       const { error } = await supabase
         .from('requests')
         .insert([newRequest]);
       
       if (error) {
         alert("Error saving to cloud: " + error.message);
-        // Fallback optimistic update
-        setRequests(prev => [...prev, newRequest]);
+        // Even if cloud fails, we might want to show it locally? 
+        // For now, let's assume if it fails we don't show it.
+      } else {
+        // SUCCESS! Optimistic Update:
+        // We update the local state IMMEDIATELY so the user sees the dot instantly.
+        // The realtime subscription (in useEffect) has a check to prevent duplicates.
+        setRequests(prev => {
+           if (prev.some(r => r.id === newRequest.id)) return prev;
+           return [...prev, newRequest];
+        });
       }
-      // Note: We don't need to manually setRequests here because the Realtime subscription will catch our own insertion!
     } else {
-      // Local Save
+      // Local Mode
       setRequests(prev => [...prev, newRequest]);
     }
   };
 
+  // Kept for internal use or advanced debug, but removed from main UI button
   const handleGenerateData = async () => {
     setIsGenerating(true);
     const mockItems = await generateMockData(5);
     
     const newRequests: RentalRequest[] = mockItems.map((item, idx) => {
       const pc4 = item.postcode.substring(0, 4);
-      const fallbackZone = PC4_ZONES[0];
+      const coords = getSmartCoords(pc4); // Use smart coords logic
       
-      const jitterLat = (Math.random() - 0.5) * 0.008;
-      const jitterLng = (Math.random() - 0.5) * 0.008;
       const date = new Date();
       date.setDate(date.getDate() - Math.floor(Math.random() * 30));
 
@@ -189,8 +229,8 @@ const App: React.FC = () => {
         id: `gen-${Date.now()}-${idx}`,
         item: item.item,
         postcode: item.postcode,
-        lat: fallbackZone.center[0] + jitterLat,
-        lng: fallbackZone.center[1] + jitterLng,
+        lat: coords.lat,
+        lng: coords.lng,
         date: date.toISOString(),
         description: item.description,
         zoneId: pc4
@@ -199,6 +239,7 @@ const App: React.FC = () => {
 
     if (useCloud && supabase) {
       await supabase.from('requests').insert(newRequests);
+      // We rely on realtime sub for bulk generates to avoid complex local state merging here
     } else {
       setRequests(prev => [...prev, ...newRequests]);
     }
@@ -262,13 +303,13 @@ const App: React.FC = () => {
             Export
           </button>
 
+          {/* UPDATED BUTTON: "Amsterdam" shows overall stats */}
           <button
-            onClick={handleGenerateData}
-            disabled={isGenerating}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-full transition shadow-sm"
+            onClick={() => handleZoneSelect(AMSTERDAM_GLOBAL_ZONE)}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 rounded-full transition shadow-sm uppercase tracking-wide"
           >
-            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4 text-purple-600" />}
-            {isGenerating ? 'Populating...' : 'Demo Data'}
+            <LayoutDashboard className="w-4 h-4" />
+            Amsterdam
           </button>
 
           <button

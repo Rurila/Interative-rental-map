@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PostcodeZone, RentalRequest, ItemStat } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { X, Wand2, Loader2, MapPin } from 'lucide-react';
+import { X, Wand2, Loader2, MapPin, Globe } from 'lucide-react';
 import { analyzeDistrictTrends } from '../services/geminiService';
 
 interface StatsPanelProps {
@@ -15,9 +15,12 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  const isGlobal = zone.id === 'ALL';
+
   // Filter requests based on zone and time
   const filteredRequests = requests.filter(req => {
-    if (req.zoneId !== zone.id) return false;
+    // If Global mode, don't filter by zoneId. Otherwise, match zoneId.
+    if (!isGlobal && req.zoneId !== zone.id) return false;
     
     const reqDate = new Date(req.date);
     const now = new Date();
@@ -45,8 +48,10 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
-    // We analyze trends for the specific PC4 now, giving much better local context
-    const contextName = `${zone.districtName} (PC ${zone.id})`;
+    const contextName = isGlobal 
+      ? "The entire city of Amsterdam" 
+      : `${zone.districtName} (PC ${zone.id})`;
+      
     const result = await analyzeDistrictTrends(contextName, data);
     setAnalysis(result);
     setIsAnalyzing(false);
@@ -56,13 +61,15 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
     <div className="absolute right-0 top-0 h-full w-full sm:w-96 bg-white shadow-2xl z-[1000] flex flex-col transform transition-transform duration-300 border-l border-gray-200">
       <div className="p-5 border-b flex justify-between items-start bg-gradient-to-b from-gray-50 to-white">
         <div>
-          <div className="flex items-center gap-2 text-blue-600 mb-1">
-             <MapPin className="w-4 h-4" />
-             <span className="text-xs font-bold uppercase tracking-wider">Postcode {zone.id}</span>
+          <div className={`flex items-center gap-2 mb-1 ${isGlobal ? 'text-red-600' : 'text-blue-600'}`}>
+             {isGlobal ? <Globe className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+             <span className="text-xs font-bold uppercase tracking-wider">
+               {isGlobal ? 'City Overview' : `Postcode ${zone.id}`}
+             </span>
           </div>
           <h2 className="text-2xl font-bold text-gray-900">{zone.districtName}</h2>
           <p className="text-sm text-gray-500 mt-1">
-            {filteredRequests.length} active request{filteredRequests.length !== 1 ? 's' : ''} in this area
+            {filteredRequests.length} active request{filteredRequests.length !== 1 ? 's' : ''} {isGlobal ? 'in Amsterdam' : 'in this area'}
           </p>
         </div>
         <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition">
@@ -145,7 +152,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
                   className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white py-3 rounded-xl font-medium text-sm hover:bg-gray-800 transition disabled:opacity-70 shadow-lg shadow-gray-200"
                  >
                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Wand2 className="w-4 h-4" />}
-                   {isAnalyzing ? 'Analyzing Patterns...' : 'AI Neighborhood Analysis'}
+                   {isAnalyzing ? 'Analyze Trends (AI)' : `Analyze ${isGlobal ? 'City' : 'Local'} Patterns`}
                  </button>
               ) : (
                 <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-100 shadow-inner">
