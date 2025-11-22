@@ -10,6 +10,35 @@ interface StatsPanelProps {
   onClose: () => void;
 }
 
+// Simple dictionary for data cleaning
+// Maps common variations to a standard term
+const ITEM_SYNONYMS: Record<string, string> = {
+  'spanner': 'Wrench',
+  'moersleutel': 'Wrench', // Dutch
+  'adjustable spanner': 'Wrench',
+  'wrench': 'Wrench',
+  'drill': 'Power Drill',
+  'boormachine': 'Power Drill', // Dutch
+  'hammer drill': 'Power Drill',
+  'bike': 'Bicycle',
+  'fiets': 'Bicycle', // Dutch
+  'city bike': 'Bicycle',
+  'cargo bike': 'Cargo Bike',
+  'bakfiets': 'Cargo Bike',
+  'party tent': 'Party Tent',
+  'partytent': 'Party Tent',
+  'bbq': 'Barbecue',
+  'grill': 'Barbecue',
+  'ladder': 'Ladder',
+  'trap': 'Ladder', // Dutch
+  'projector': 'Beamer',
+  'beamer': 'Beamer'
+};
+
+const toTitleCase = (str: string) => {
+  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+};
+
 const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
   const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week'>('all');
   const [analysis, setAnalysis] = useState<string | null>(null);
@@ -35,9 +64,33 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
     return true;
   });
 
-  // Aggregate item counts
+  // Aggregate item counts with Splitting and Cleaning logic
   const itemCounts = filteredRequests.reduce((acc, curr) => {
-    acc[curr.item] = (acc[curr.item] || 0) + 1;
+    // 1. Split by common separators: comma, ampersand, plus, or the word "and"
+    // e.g. "Locker, bolt cutter" -> ["Locker", " bolt cutter"]
+    const parts = curr.item.split(/[,+&]|\s+and\s+/i);
+
+    parts.forEach((part) => {
+      // 2. Basic cleaning: trim whitespace and convert to lowercase for comparison
+      let cleanName = part.trim().toLowerCase();
+      
+      // Remove trailing punctuation (like periods)
+      cleanName = cleanName.replace(/[.]+$/, '');
+
+      if (!cleanName) return;
+
+      // 3. Synonym mapping / Normalization
+      // If it exists in our map, use the standard name, otherwise title case the user input
+      let displayName = ITEM_SYNONYMS[cleanName];
+      
+      if (!displayName) {
+        // Fallback: just title case what they wrote if it's not in our dictionary
+        displayName = toTitleCase(cleanName);
+      }
+
+      acc[displayName] = (acc[displayName] || 0) + 1;
+    });
+
     return acc;
   }, {} as Record<string, number>);
 
