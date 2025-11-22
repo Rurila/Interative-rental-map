@@ -13,7 +13,7 @@
 
 你需要安装 **Node.js** (相当于 Python 的解释器)。下载地址：[nodejs.org](https://nodejs.org)。
 
-在终端 (Terminal) 中运行以下三个命令：
+在终端 (Terminal) 中运行以下两个命令：
 
 1.  **安装依赖包** (相当于 `pip install -r requirements.txt`)
     ```bash
@@ -26,37 +26,64 @@
     ```
     *运行后，终端会显示一个网址（通常是 `http://localhost:5173`），在浏览器打开它即可看到地图。*
 
-3.  **发布到网上**
-    ```bash
-    npm run deploy
-    ```
-    *这会自动构建网页并上传到 GitHub Pages。*
+---
+
+## 2. 部署到云端 (Vercel Deployment) ☁️
+
+这是最推荐的方式，简单且快速。
+
+### 第一步：确保代码在 GitHub 上
+你提到已经保存到 GitHub 了，这一步你应该已经完成了。
+
+### 第二步：在 Vercel 上导入
+1.  打开 [Vercel.com](https://vercel.com) 并注册账号（**建议直接用 GitHub 账号登录**，这样最方便）。
+2.  在 Dashboard 页面，点击 **"Add New..."** -> **"Project"**。
+3.  在左侧列表中找到你的 `amsterdam-rental-map` 仓库，点击 **"Import"**。
+4.  **配置页面 (Configure Project)**：
+    *   **Framework Preset**: Vercel 通常会自动识别为 `Vite`。如果没识别，手动选 `Vite`。
+    *   **Root Directory**: 保持默认 (`./`)。
+    *   **Build Command**: 保持默认。
+    *   点击 **"Deploy"** 按钮。
+5.  等待约 1 分钟，屏幕上会出现满屏的彩带 🎉。
+6.  点击 **"Continue to Dashboard"**，你会看到一个 `Visit` 按钮。
+    *   你的网址通常长这样：`https://amsterdam-rental-map-app.vercel.app`
+    *   👉 **复制这个网址**。
 
 ---
 
-## 2. 核心文件结构 (File Structure)
+## 3. 集成到 Wix 网页 (Wix Integration)
+
+现在你有了 Vercel 提供的稳定网址，我们把它放进 Wix。
+
+1.  进入 Wix 网页编辑器。
+2.  点击左侧 **+ (Add Elements)**。
+3.  选择 **Embed Code (嵌入代码)** -> **Embed HTML**。
+4.  在弹出的设置框中：
+    *   选择 **Website Address** (因为我们现在有了 Vercel 的链接，选这个比选 Code 更方便)。
+    *   **Website Address**: 粘贴你在 Vercel 获得的网址 (例如 `https://amsterdam-rental-map-app.vercel.app`)。
+5.  调整方框大小，建议拉大一点（宽度 100%，高度至少 600px），确保地图显示完整。
+
+---
+
+## 4. 核心文件结构 (File Structure)
 
 为了方便修改，你只需要关注以下几个文件：
 
-*   📂 **`src/constants.ts`**
-    *   **用途**：存放常量。
-    *   **修改场景**：你想修改地图的初始中心点、缩放级别，或者修改预览模式下的默认数据。
+*   📂 **`src/data/seedData.ts`**
+    *   **用途**：存放初始数据。
+    *   **修改场景**：把你 Python 处理好的 JSON 数据粘贴到这里。
 
 *   📂 **`src/services/geoService.ts`**
     *   **用途**：定义地理逻辑。
-    *   **修改场景**：**最重要**。如果你想改变街区的颜色，或者重新定义哪些邮编属于哪个行政区，就在这里改 `if/else` 语句。
+    *   **修改场景**：如果你想改变街区的颜色，或者重新定义哪些邮编属于哪个行政区，就在这里改 `if/else` 语句。
 
 *   📂 **`src/components/MapBoard.tsx`**
     *   **用途**：地图组件。
-    *   **修改场景**：如果你想调整地图的点击行为、弹窗样式，或者加载不同的地图底图（TileLayer）。
-
-*   📂 **`public/`**
-    *   **用途**：存放静态资源。
-    *   **修改场景**：把你的 GeoJSON 文件 (`amsterdam_pc4.geojson`) 放在这里。
+    *   **修改场景**：调整地图样式或交互。
 
 ---
 
-## 3. Python 数据工作流建议
+## 5. Python 数据工作流建议
 
 作为研究者，你可能需要把自己的调查数据导入地图。
 
@@ -67,52 +94,18 @@
 *   放入：项目的 `public/` 文件夹中。
 
 ### 步骤 B: 批量导入初始数据
-目前代码在 `App.tsx` 里有一些演示数据。如果你有几百条 Excel 数据想展示：
-
 1.  **用 Python 转换数据**：
     ```python
     import pandas as pd
-
-    # 1. 读取你的数据
-    df = pd.read_excel("my_survey_data.xlsx")
-
-    # 2. 确保有经纬度 (如果没有，可以用 geopy 库去跑一遍)
-    # 3. 转换成 JSON 格式
-    json_output = df.to_json(orient="records")
-    print(json_output)
+    # 读取 Excel -> 处理 -> 转 JSON
+    # ... (参考之前的 Python 代码)
     ```
-
-2.  **粘贴到 App.tsx**：
-    找到 `App.tsx` 中的 `useEffect` 部分，把生成的 JSON 数据粘贴到 `initialData` 数组里。
-
----
-
-## 4. Wix 嵌入指南 (Embed in Wix)
-
-当你运行 `npm run deploy` 成功后，你会得到一个网址（例如 `https://yourname.github.io/repo/`）。
-
-在 Wix 编辑器中：
-1.  选择 **Embed Code (嵌入代码)** -> **Embed HTML**。
-2.  输入以下代码：
-
-```html
-<iframe 
-  src="https://你的GitHub用户名.github.io/你的仓库名/" 
-  width="100%" 
-  height="100%" 
-  frameborder="0" 
-  allow="geolocation" 
-  style="border: none; width: 100%; height: 100vh; min-height: 600px;"
-></iframe>
-```
-
-## 5. 常见问题
-
-*   **Q: 地图显示灰色/报错？**
-    *   A: 检查 `public` 文件夹里是否有 `amsterdam_pc4.geojson`。如果没有，系统会用备用数据（只有5个方块）。
-    
-*   **Q: 颜色太深了，遮住了路名。**
-    *   A: 去 `src/components/MapBoard.tsx`，搜索 `fillOpacity` (填充透明度)，把数字改小（比如从 0.4 改成 0.1）。
-
-*   **Q: 我想改颜色，比如把中心区改成蓝色。**
-    *   A: 去 `src/services/geoService.ts`，找到 `getDistrictColorFromPC4` 函数，修改对应的 HEX 颜色代码。
+2.  **粘贴到 seedData.ts**：
+    找到 `src/data/seedData.ts`，把 Python 生成的内容粘贴进去。
+3.  **推送到 GitHub**：
+    ```bash
+    git add .
+    git commit -m "Update data"
+    git push
+    ```
+    *✨ 魔法时刻：因为你连接了 Vercel，当你执行 `git push` 后，Vercel 会自动检测到更新，并在 1-2 分钟内自动更新你的 Wix 网页！不需要手动重新部署。*
