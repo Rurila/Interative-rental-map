@@ -29,8 +29,14 @@ try {
   // Ignore process env errors
 }
 
-// Create client with the determined credentials
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Create client with explicit realtime headers to ensure RLS policies work smoothly
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});
 
 // Helper to check connectivity
 export const isSupabaseConfigured = () => {
