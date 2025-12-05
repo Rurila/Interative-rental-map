@@ -4,6 +4,14 @@ import { getDistrictColorFromPC4, getDistrictNameFromPC4 } from './services/geoS
 export const AMSTERDAM_CENTER: [number, number] = [52.3702, 4.8952];
 export const ZOOM_LEVEL = 13;
 
+export const POPULAR_ITEMS = [
+  "Cargo Bike", "Power Drill", "Party Tent", "Ladder", "Folding Chairs",
+  "Sound System", "Projector", "BBQ", "Toolbox", "Sander",
+  "Pressure Washer", "Steam Cleaner", "Sewing Machine", "Board Games",
+  "Cat Carrier", "Wheelbarrow", "Moving Dolly", "Extension Cord",
+  "Air Mattress", "Heater"
+];
+
 // Fallback zones in case GeoJSON fails to load
 // This ensures the app is usable immediately even without the external file
 export const PC4_ZONES: PostcodeZone[] = [

@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { PostcodeZone, RentalRequest, ItemStat } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { X, Wand2, Loader2, MapPin, Globe } from 'lucide-react';
+import { X, Wand2, Loader2, MapPin, Globe, Sparkles, AlertCircle } from 'lucide-react';
 import { analyzeDistrictTrends } from '../services/geminiService';
+import { POPULAR_ITEMS } from '../constants';
 
 interface StatsPanelProps {
   zone: PostcodeZone;
@@ -10,32 +11,60 @@ interface StatsPanelProps {
   onClose: () => void;
 }
 
-// Basic Synonym Dictionary for Data Cleaning
+// Data Cleaning Dictionary
+// Maps common variations (keys) to Standard Preset Names (values) defined in POPULAR_ITEMS
 const SYNONYMS: Record<string, string> = {
-  'spanner': 'Wrench',
-  'wrench': 'Wrench',
-  'adjustable spanner': 'Wrench',
-  'moersleutel': 'Wrench',
-  'bike': 'Bicycle',
-  'bicycle': 'Bicycle',
-  'fiets': 'Bicycle',
-  'cargo bike': 'Cargo Bike',
-  'bakfiets': 'Cargo Bike',
+  // Tools
   'drill': 'Power Drill',
-  'power drill': 'Power Drill',
   'hammer drill': 'Power Drill',
   'boormachine': 'Power Drill',
+  'sander': 'Sander',
+  'schuurmachine': 'Sander',
+  'high pressure cleaner': 'Pressure Washer',
+  'hogedrukreiniger': 'Pressure Washer',
+  'kärcher': 'Pressure Washer',
   'ladder': 'Ladder',
-  'step ladder': 'Ladder',
   'trap': 'Ladder',
-  'bbq': 'Barbecue',
-  'barbecue': 'Barbecue',
-  'grill': 'Barbecue'
+  'stepladder': 'Ladder',
+  'toolbox': 'Toolbox',
+  'gereedschapskist': 'Toolbox',
+  
+  // Transport
+  'bike': 'Cargo Bike', // Assumption: most people borrowing bikes mean cargo bikes for moving
+  'bakfiets': 'Cargo Bike',
+  'cargo bike': 'Cargo Bike',
+  'dolly': 'Moving Dolly',
+  'hondje': 'Moving Dolly',
+  'wheelbarrow': 'Wheelbarrow',
+  'kruiwagen': 'Wheelbarrow',
+
+  // Household / Event
+  'party tent': 'Party Tent',
+  'partytent': 'Party Tent',
+  'folding chair': 'Folding Chairs',
+  'folding chairs': 'Folding Chairs',
+  'klapstoel': 'Folding Chairs',
+  'klapstoelen': 'Folding Chairs',
+  'bbq': 'BBQ',
+  'barbecue': 'BBQ',
+  'sound system': 'Sound System',
+  'jbl': 'Sound System',
+  'speaker': 'Sound System',
+  'projector': 'Projector',
+  'beamer': 'Projector',
+  'air mattress': 'Air Mattress',
+  'luchtbed': 'Air Mattress',
+  'heater': 'Heater',
+  'kachel': 'Heater',
+  'sewing machine': 'Sewing Machine',
+  'naaimachine': 'Sewing Machine',
+  'cat carrier': 'Cat Carrier',
+  'kattenmand': 'Cat Carrier'
 };
 
 const normalizeAndSplitItems = (rawItem: string): string[] => {
   // 1. Split by common separators: comma, ampersand, plus, or ' and '
-  // e.g. "Locker, bolt cutter" -> ["Locker", "bolt cutter"]
+  // e.g. "Drill, Helmet" -> ["Drill", "Helmet"]
   const parts = rawItem.split(/[,&+]|\s+and\s+/i);
 
   // 2. Clean and Normalize each part
@@ -43,7 +72,7 @@ const normalizeAndSplitItems = (rawItem: string): string[] => {
     .map(part => {
       let s = part.trim().toLowerCase();
       
-      // NEW: Remove articles (a, an, the) from the start to merge "A drill" with "Drill"
+      // Remove articles (a, an, the) from the start
       s = s.replace(/^(a|an|the)\s+/i, '');
 
       // Check synonyms
@@ -66,7 +95,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
   const isGlobal = zone.id === 'ALL';
 
   // Memoize the data processing to avoid recalculating on every render unless deps change
-  const data = useMemo(() => {
+  const { popularStats, customStats } = useMemo(() => {
     // 1. Filter requests based on zone and time
     const filteredRequests = requests.filter(req => {
       // If Global mode, don't filter by zoneId. Otherwise, match zoneId.
@@ -85,23 +114,35 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
       return true;
     });
 
+    const presetCounts: Record<string, number> = {};
+    const otherCounts: Record<string, number> = {};
+
     // 2. Aggregate item counts with Cleaning Logic
-    const itemCounts = filteredRequests.reduce((acc, curr) => {
+    filteredRequests.forEach(req => {
       // Split "Locker, bolt cutter" into multiple items
-      const cleanedItems = normalizeAndSplitItems(curr.item);
+      const cleanedItems = normalizeAndSplitItems(req.item);
       
       cleanedItems.forEach(item => {
-        acc[item] = (acc[item] || 0) + 1;
+        // Check if this item maps to our Popular/Preset List
+        if (POPULAR_ITEMS.includes(item)) {
+          presetCounts[item] = (presetCounts[item] || 0) + 1;
+        } else {
+          otherCounts[item] = (otherCounts[item] || 0) + 1;
+        }
       });
-      
-      return acc;
-    }, {} as Record<string, number>);
+    });
 
-    // 3. Convert to array and sort
-    return Object.entries(itemCounts)
-      .map(([name, count]) => ({ name, count: count as number }))
+    // 3. Convert to arrays and sort
+    const popSorted = Object.entries(presetCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const customSorted = Object.entries(otherCounts)
+      .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      .slice(0, 10); // Limit long tail
+
+    return { popularStats: popSorted, customStats: customSorted };
   }, [requests, zone.id, isGlobal, timeFilter]);
 
   const handleAnalyze = async () => {
@@ -110,10 +151,15 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
       ? "The entire city of Amsterdam" 
       : `${zone.districtName} (PC ${zone.id})`;
       
-    const result = await analyzeDistrictTrends(contextName, data);
+    // Combine both lists for AI analysis
+    const allItems = [...popularStats, ...customStats].slice(0, 15);
+    
+    const result = await analyzeDistrictTrends(contextName, allItems);
     setAnalysis(result);
     setIsAnalyzing(false);
   };
+
+  const hasData = popularStats.length > 0 || customStats.length > 0;
 
   return (
     <div className="absolute right-0 top-0 h-full w-full sm:w-96 bg-white shadow-2xl z-[1000] flex flex-col transform transition-transform duration-300 border-l border-gray-200">
@@ -152,7 +198,7 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-        {data.length === 0 ? (
+        {!hasData ? (
           <div className="flex flex-col items-center justify-center h-64 text-center text-gray-400">
             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                 <Loader2 className="w-6 h-6" />
@@ -161,46 +207,60 @@ const StatsPanel: React.FC<StatsPanelProps> = ({ zone, requests, onClose }) => {
           </div>
         ) : (
           <>
-            <div className="h-56 mb-8">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                  <XAxis type="number" hide />
-                  <YAxis 
-                    type="category" 
-                    dataKey="name" 
-                    width={90} 
-                    tick={{fontSize: 11, fill: '#4b5563'}} 
-                    interval={0}
-                  />
-                  <Tooltip 
-                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                    cursor={{fill: '#f3f4f6'}}
-                  />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
-                    {data.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={zone.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {/* Section 1: Standard Items */}
+            {popularStats.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-blue-500" />
+                  Top Standard Items
+                </h3>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={popularStats} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        type="category" 
+                        dataKey="name" 
+                        width={90} 
+                        tick={{fontSize: 11, fill: '#4b5563'}} 
+                        interval={0}
+                      />
+                      <Tooltip 
+                        contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                        cursor={{fill: '#f3f4f6'}}
+                      />
+                      <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
+                        {popularStats.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={zone.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
 
-            <div className="space-y-4">
-               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Most Wanted Items (Top 10)</h3>
-               <ul className="space-y-2">
-                 {data.map((item, idx) => (
-                   <li key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition">
-                     <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-gray-400 w-4">#{idx + 1}</span>
-                        <span className="text-gray-800 font-medium text-sm">{item.name}</span>
-                     </div>
-                     <span className="bg-white border border-gray-200 text-gray-700 text-xs font-bold px-2 py-1 rounded-md shadow-sm">
-                        {item.count}
-                     </span>
-                   </li>
-                 ))}
-               </ul>
-            </div>
+            {/* Section 2: Custom / Unique Items */}
+            {customStats.length > 0 && (
+              <div className="mb-8">
+                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-amber-500" />
+                    Additional Needs (Long Tail)
+                 </h3>
+                 <ul className="space-y-2">
+                   {customStats.map((item, idx) => (
+                     <li key={idx} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition text-sm">
+                       <span className="text-gray-700 font-medium truncate pr-2" title={item.name}>
+                          {item.name}
+                       </span>
+                       <span className="bg-white border border-gray-200 text-gray-500 text-xs font-bold px-1.5 py-0.5 rounded shadow-sm shrink-0">
+                          {item.count}
+                       </span>
+                     </li>
+                   ))}
+                 </ul>
+              </div>
+            )}
 
             <div className="mt-8 pt-6 border-t border-gray-100">
               {!analysis ? (
