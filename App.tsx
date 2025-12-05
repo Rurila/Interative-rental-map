@@ -7,9 +7,10 @@ import { PC4_ZONES, AMSTERDAM_CENTER } from './constants';
 import { generateMockData } from './services/geminiService';
 import { exportRequestsToExcel } from './services/excelService';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
-import { Plus, Map as MapIcon, Loader2, Download, Trash2, Cloud, CloudOff, Wifi, LayoutDashboard } from 'lucide-react';
+import { Plus, Map as MapIcon, Loader2, Download, Trash2, CloudOff, Wifi, LayoutDashboard, Undo2 } from 'lucide-react';
 
 const STORAGE_KEY = 'amsterdam_rental_requests';
+const MY_REQUESTS_KEY = 'amsterdam_my_request_ids';
 
 const AMSTERDAM_GLOBAL_ZONE: PostcodeZone = {
   id: 'ALL',
@@ -26,12 +27,14 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   
+  // Track IDs created by this user on this device
+  const [myRequestIds, setMyRequestIds] = useState<string[]>([]);
+  
   // Cloud Status
   const [useCloud, setUseCloud] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'live' | 'offline' | 'local'>('local');
 
   // Helper: Get jittered coordinates based on PC4 ranges
-  // This ensures points fall into their correct district even if we don't have a specific polygon for them
   const getSmartCoords = (pc4: string) => {
     // 1. Try exact match in our highlighted zones first
     const zone = PC4_ZONES.find(z => z.id === pc4);
@@ -63,6 +66,16 @@ const App: React.FC = () => {
 
   // 1. Initialization Effect
   useEffect(() => {
+    // Load "My Requests" history from local storage
+    const savedMyIds = localStorage.getItem(MY_REQUESTS_KEY);
+    if (savedMyIds) {
+      try {
+        setMyRequestIds(JSON.parse(savedMyIds));
+      } catch (e) {
+        console.error("Failed to parse my request ids", e);
+      }
+    }
+
     const initialize = async () => {
       if (isSupabaseConfigured() && supabase) {
         setUseCloud(true);
@@ -75,7 +88,6 @@ const App: React.FC = () => {
           
         if (error) {
           console.error("Supabase fetch error:", error);
-          // Fallback to local if cloud fails
           loadLocalData();
         } else {
           setRequests(data as RentalRequest[] || []);
@@ -86,7 +98,6 @@ const App: React.FC = () => {
             .channel('public:requests')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'requests' }, (payload) => {
               const newReq = payload.new as RentalRequest;
-              // Prevent duplicates: Check if ID already exists (e.g. if we added it optimistically)
               setRequests(prev => {
                 if (prev.some(req => req.id === newReq.id)) return prev;
                 return [...prev, newReq];
@@ -105,7 +116,6 @@ const App: React.FC = () => {
           };
         }
       } else {
-        // Fallback: No keys configured
         loadLocalData();
       }
       setIsLoaded(true);
@@ -114,7 +124,12 @@ const App: React.FC = () => {
     initialize();
   }, []);
 
-  // 2. Local Storage Fallback Sync
+  // 2. Persist "My Request IDs" whenever they change
+  useEffect(() => {
+    localStorage.setItem(MY_REQUESTS_KEY, JSON.stringify(myRequestIds));
+  }, [myRequestIds]);
+
+  // 3. Local Storage Fallback Sync (Only when offline)
   useEffect(() => {
     if (isLoaded && !useCloud) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
@@ -137,7 +152,6 @@ const App: React.FC = () => {
   };
 
   const loadDemoData = () => {
-    // Create specific demo data that maps correctly to our defined zones
     const demoItems = [
       { item: 'Hammer Drill', pc: '1012', desc: 'Renovation work' },
       { item: 'Cargo Bike', pc: '1054', desc: 'Moving boxes' },
@@ -163,27 +177,37 @@ const App: React.FC = () => {
     setRequests(initialData);
   };
 
-  const handleResetData = async () => {
-    if (!window.confirm('WARNING: This will delete ALL data. If you are in Cloud mode, this deletes data for everyone. Continue?')) {
+  // NEW: Only delete requests created by this user
+  const handleUndoMyRequests = async () => {
+    if (myRequestIds.length === 0) {
+      alert("You haven't posted any requests yet.");
       return;
     }
 
+    if (!window.confirm(`Are you sure you want to delete your ${myRequestIds.length} submitted request(s)? This cannot be undone.`)) {
+      return;
+    }
+
+    // 1. Optimistic Update (remove from UI immediately)
+    setRequests(prev => prev.filter(req => !myRequestIds.includes(req.id)));
+
+    // 2. Cloud Delete
     if (useCloud && supabase) {
       const { error } = await supabase
         .from('requests')
         .delete()
-        .neq('id', '0'); 
+        .in('id', myRequestIds); // Delete where ID is in our list
       
       if (error) {
-        alert('Failed to clear cloud data');
-      } else {
-        setRequests([]); 
+        console.error("Failed to delete from cloud", error);
+        alert('Failed to sync deletion with cloud. Please try again.');
+        // Re-fetch or reload page might be needed here in a strictly consistent app, 
+        // but for this demo, keeping the optimistic update is usually fine.
       }
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-      loadDemoData();
-      window.location.reload();
     }
+
+    // 3. Clear local history
+    setMyRequestIds([]);
   };
 
   const handleZoneSelect = (zone: PostcodeZone) => {
@@ -193,13 +217,11 @@ const App: React.FC = () => {
   const handleAddRequest = async (data: { item: string; postcode: string; description: string; lat: number; lng: number }) => {
     const pc4 = data.postcode.substring(0, 4);
     
-    // Use a robust ID generation to avoid collisions
     const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
       ? crypto.randomUUID() 
       : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Add random jitter (approx 30-50m) to prevent exact marker overlap
-    // when users in the same PC6 (street segment) add items.
+    // Add random jitter (approx 30-50m)
     const JITTER_AMOUNT = 0.0006;
     const jitterLat = (Math.random() - 0.5) * JITTER_AMOUNT;
     const jitterLng = (Math.random() - 0.5) * JITTER_AMOUNT;
@@ -215,11 +237,13 @@ const App: React.FC = () => {
       zoneId: pc4
     };
 
-    // 1. Optimistic Update: Add locally IMMEDIATELY
+    // Track this ID as "Mine"
+    setMyRequestIds(prev => [...prev, newId]);
+
+    // Optimistic Update
     setRequests(prev => [...prev, newRequest]);
 
     if (useCloud && supabase) {
-      // 2. Send to Cloud
       const { error } = await supabase
         .from('requests')
         .insert([newRequest]);
@@ -227,25 +251,19 @@ const App: React.FC = () => {
       if (error) {
         console.error("Supabase saving error:", error);
         alert("Error saving to cloud. Changes reverted.");
-        // Rollback if failed
         setRequests(prev => prev.filter(r => r.id !== newId));
+        setMyRequestIds(prev => prev.filter(id => id !== newId));
       } 
-      // If success, the Realtime subscription handles the event, 
-      // and our 'prev.some(id)' check prevents duplicates.
     }
   };
 
-  // Kept for internal use or advanced debug
   const handleGenerateData = async () => {
     setIsGenerating(true);
     const mockItems = await generateMockData(5);
     
     const newRequests: RentalRequest[] = mockItems.map((item, idx) => {
       const pc4 = item.postcode.substring(0, 4);
-      const coords = getSmartCoords(pc4); // Now uses smart range logic
-      
-      const date = new Date();
-      date.setDate(date.getDate() - Math.floor(Math.random() * 30));
+      const coords = getSmartCoords(pc4); 
       
       const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
         ? crypto.randomUUID() 
@@ -257,7 +275,7 @@ const App: React.FC = () => {
         postcode: item.postcode,
         lat: coords.lat,
         lng: coords.lng,
-        date: date.toISOString(),
+        date: new Date().toISOString(),
         description: item.description,
         zoneId: pc4
       };
@@ -293,7 +311,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Status Indicator */}
           <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${
             useCloud 
               ? syncStatus === 'live' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
@@ -311,12 +328,19 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Modified Delete Button -> Undo My Requests */}
           <button
-            onClick={handleResetData}
-            title={useCloud ? "Clear Database (Careful!)" : "Reset Local Data"}
-            className="hidden sm:flex items-center justify-center w-9 h-9 text-gray-400 hover:text-red-600 bg-transparent hover:bg-red-50 rounded-full transition"
+            onClick={handleUndoMyRequests}
+            title={myRequestIds.length > 0 ? `Undo my ${myRequestIds.length} posts` : "No posts to undo"}
+            className={`hidden sm:flex items-center justify-center w-9 h-9 rounded-full transition ${
+              myRequestIds.length > 0 
+                ? 'text-gray-500 hover:text-red-600 hover:bg-red-50 cursor-pointer' 
+                : 'text-gray-300 cursor-not-allowed'
+            }`}
+            disabled={myRequestIds.length === 0}
           >
-            <Trash2 className="w-4 h-4" />
+            {/* Changed icon to Undo2 or Trash with context */}
+            <Undo2 className="w-4 h-4" />
           </button>
 
           <button
@@ -328,7 +352,6 @@ const App: React.FC = () => {
             Export
           </button>
 
-          {/* "Amsterdam" shows overall stats */}
           <button
             onClick={() => handleZoneSelect(AMSTERDAM_GLOBAL_ZONE)}
             className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 rounded-full transition shadow-sm uppercase tracking-wide"
