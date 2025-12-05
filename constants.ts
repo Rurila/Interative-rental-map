@@ -5,11 +5,11 @@ export const AMSTERDAM_CENTER: [number, number] = [52.3702, 4.8952];
 export const ZOOM_LEVEL = 13;
 
 export const POPULAR_ITEMS = [
-  "Cargo Bike", "Power Drill", "Party Tent", "Ladder", "Folding Chairs",
-  "Sound System", "Projector", "BBQ", "Toolbox", "Sander",
-  "Pressure Washer", "Steam Cleaner", "Sewing Machine", "Board Games",
-  "Cat Carrier", "Wheelbarrow", "Moving Dolly", "Extension Cord",
-  "Air Mattress", "Heater"
+  "Thermal camera", "Projector", "Karaoke set", "Montessori Stepping Stones", "Sewing machine",
+  "Bush cutter", "Hedge trimmer", "Weed puller", "Drill", "Sander",
+  "Toolbox", "Telescopic ladder", "Moisture meter", "Bicycle toolkit",
+  "Jigsaw", "Large pan set", "Slow cooker Professional", "Handheld pressure washer",
+  "Wet and dry vacuum cleaner", "Carpet cleaner"
 ];
 
 // Fallback zones in case GeoJSON fails to load
